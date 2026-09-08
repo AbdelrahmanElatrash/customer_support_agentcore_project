@@ -5,7 +5,9 @@ from src.configuration import MODEL , sys_prompt, GATEWAY_URL
 from src.validation.model_validation import Request ,Response
 from strands.tools.mcp.mcp_client import MCPClient
 from mcp.client.streamable_http import streamable_http_client
-
+import asyncio
+import json
+import argparse
 
 
 client = MCPClient(
@@ -46,6 +48,14 @@ async def invoke(payload, context=None):
         return response.model_dump()
 
 
+# ── CLI entry point (do not modify) ──────────────────────────────────────────
+def main():
+    """Run one invocation from the command line for local testing."""
+    parser = argparse.ArgumentParser()
+    parser.add_argument("payload", type=str)
+    args = parser.parse_args()
+    response = asyncio.run(invoke(json.loads(args.payload)))
+    print(response)
 
 if __name__== "__main__":
     # run the app locally for testing
