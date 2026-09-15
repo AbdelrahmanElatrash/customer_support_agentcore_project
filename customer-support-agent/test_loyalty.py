@@ -1,5 +1,5 @@
 from strands import Agent
-from src.customer_support_agent.tools import calculate_loyalty_discount
+from customer_support_agent.calculate_loyalty import calculate_loyalty_discount
 from src.customer_support_agent.config import MODEL
 
 
