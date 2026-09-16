@@ -14,3 +14,46 @@ CodeBuild
   .venv/lib/python3.13/site-packages/bedrock_agentcore_starter_toolkit/services/codebuild.py
 
   
+
+  Tool #1: calculate_loyalty_discount
+### Loyalty Discount Breakdown (Gold Member)
+
+- **Order total:** $150.00  
+- **Customer tier:** Gold  
+- **Loyalty points available:** 4,250  
+
+#### Discounts Applied
+
+1. **Tier discount (Gold):**  
+   - Rate: 10 %  
+   - Discount amount: **$15.00**  
+
+2. **Points discount:**  
+   - Points redeemed: 4,200 points  
+   - Discount amount: **$42.00**  
+
+#### Final Totals
+- **Remaining loyalty points:** 50 points  
+- **Final total after discounts:** **$93.00**  
+
+You saved a total of **$57.00** on your $150 order.### Loyalty Discount Breakdown (Gold Member)
+
+- **Order total:** $150.00  
+- **Customer tier:** Gold  
+- **Loyalty points available:** 4,250  
+
+#### Discounts Applied
+
+1. **Tier discount (Gold):**  
+   - Rate: 10 %  
+   - Discount amount: **$15.00**  
+
+2. **Points discount:**  
+   - Points redeemed: 4,200 points  
+   - Discount amount: **$42.00**  
+
+#### Final Totals
+- **Remaining loyalty points:** 50 points  
+- **Final total after discounts:** **$93.00**  
+
+You saved a total of **$57.00** on your $150 order.
