@@ -3,9 +3,10 @@ from strands.hooks import (
     HookProvider, AfterInvocationEvent, HookRegistry, MessageAddedEvent,
 )
 from typing import Dict
+from .config import REGION
 
 
-memory_client = MemoryClient()
+memory_client = MemoryClient(region_name=REGION)
 
 def get_namespaces(mem_client: MemoryClient, memory_id: str) -> Dict:
     """Return a dict mapping strategy type → namespace template string."""
@@ -38,10 +39,6 @@ class MemoryHook(HookProvider):
     def retrieve_customer_context(self, event: MessageAddedEvent):
         """Retrieve relevant memories and prepend them to the user message."""
         messages = event.agent.messages
-        # if not messages or messages[-1]["role"] != "user" or "toolResult" in messages[-1]["content"][0]:
-        #     return
-
-        # user_query = messages[-1]["content"][0]["text"]
 
         if not messages:
             return
@@ -159,7 +156,3 @@ class MemoryHook(HookProvider):
         registry.add_callback(MessageAddedEvent,self.retrieve_customer_context)
 
         registry.add_callback(AfterInvocationEvent,self.save_support_interaction)
-
-    
-
-    

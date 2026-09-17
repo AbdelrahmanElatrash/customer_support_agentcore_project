@@ -1,12 +1,14 @@
 from strands import Agent
 from bedrock_agentcore.runtime import BedrockAgentCoreApp
 from src.customer_support_agent.config import MODEL, SYS_PROMPT, GATEWAY_URL,MEMORY_ID, REGION
-import logging, os, asyncio, argparse, json 
+import logging, os, asyncio, argparse, json, uuid
 from strands.tools.mcp.mcp_client import MCPClient
 from mcp.client.streamable_http import streamable_http_client
 from customer_support_agent.calculate_loyalty import calculate_loyalty_discount
 from bedrock_agentcore.memory import MemoryClient
 from src.customer_support_agent.memory  import MemoryHook
+from src.customer_support_agent.KB import search_knowledge_base
+from strands_tools.browser import AgentCoreBrowser
 
 
 
@@ -20,10 +22,7 @@ app = BedrockAgentCoreApp()
 os.environ["BYPASS_TOOL_CONSENT"] = "true"
 
 
-memory_client = MemoryClient()
-
-actor_id = "customer-001"
-session_id = "session-001"
+memory_client = MemoryClient(region_name=REGION)
 
 
 @app.entrypoint
@@ -39,44 +38,38 @@ async def invoke(payload, context=None):
         # Implement the agent invocation
         
         user_message = payload.get("prompt", "Hello!")
+        actor_id = payload.get("customer_id", "customer-001")
+        session_id = payload.get("session_id") or str(uuid.uuid4())
 
+        browser = AgentCoreBrowser(session_timeout=600)
+        
+        memory_hook = MemoryHook(
+                    actor_id=actor_id,
+                    session_id=session_id,
+                    memory_client=memory_client,
+                    memory_id=MEMORY_ID,
+                        )
+
+        
 #         client = MCPClient(
 #         lambda: streamable_http_client(url=GATEWAY_URL)
 #         )
 
+#         
 #         with client:
 #             tools = client.list_tools_sync()
 #             logger.info("Discovered %d tools from Gateway", len(tools))
 
-#             memory_hook = MemoryHook(
-#             actor_id=actor_id,
-#             session_id=session_id,
-#             memory_client=memory_client,
-#             memory_id=MEMORY_ID,
-#                       )
+#             
 #             agent = Agent(model=MODEL,
 #                     system_prompt=SYS_PROMPT,
-#                     tools= [calculate_loyalty_discount]+tools,
+#                     tools= [calculate_loyalty_discount, search_knowledge_base, browser.browser]+tools,
 #                     hooks=[memory_hook]
 #                     )
 
             # response = agent(user_message)
             # return {"response": str(response)}
-        memory_hook = MemoryHook(
-            actor_id=actor_id,
-            session_id=session_id,
-            memory_client=memory_client,
-            memory_id=MEMORY_ID,
-                )
-
-        agent = Agent(
-                model=MODEL,
-                system_prompt=SYS_PROMPT,
-                tools=[calculate_loyalty_discount],
-                hooks=[memory_hook],
-) 
-        response = agent(user_message)
-        return {"response": str(response)}
+        
 
         
 
