@@ -51,24 +51,24 @@ async def invoke(payload, context=None):
                         )
 
         
-#         client = MCPClient(
-#         lambda: streamable_http_client(url=GATEWAY_URL)
-#         )
+        client = MCPClient(
+        lambda: streamable_http_client(url=GATEWAY_URL)
+        )
 
-#         
-#         with client:
-#             tools = client.list_tools_sync()
-#             logger.info("Discovered %d tools from Gateway", len(tools))
+        
+        with client:
+            tools = client.list_tools_sync()
+            logger.info("Discovered %d tools from Gateway", len(tools))
 
-#             
-#             agent = Agent(model=MODEL,
-#                     system_prompt=SYS_PROMPT,
-#                     tools= [calculate_loyalty_discount, search_knowledge_base, browser.browser]+tools,
-#                     hooks=[memory_hook]
-#                     )
+            
+            agent = Agent(model=MODEL,
+                    system_prompt=SYS_PROMPT,
+                    tools= [calculate_loyalty_discount, search_knowledge_base, browser.browser]+tools,
+                    hooks=[memory_hook]
+                    )
 
-            # response = agent(user_message)
-            # return {"response": str(response)}
+            response = agent(user_message)
+            return {"response": str(response)}
         
 
         

@@ -1,0 +1,26 @@
+## Brief Written Reflection
+
+One important implementation decision was to use **Amazon Bedrock AgentCore Gateway with 
+Lambda** for order and refund operations. This integration allows the Strands-based agent 
+to access external business functions as tools instead of implementing transactional logic 
+directly inside the agent. I chose this approach because it separates the agent's reasoning 
+from backend operations and makes functions such as retrieving orders and initiating refunds 
+independently accessible through the Gateway. I also used **AgentCore Memory** with a stable 
+customer ID so the agent could remember relevant customer information across separate sessions.
+
+A concrete challenge I encountered was during deployment, when the **CodeBuild process failed 
+during the provisioning phase**. I investigated the deployment configuration, CodeBuild resources, 
+IAM roles, and the build environment to identify the cause. I also encountered a limitation when 
+creating the **Knowledge Base** because the lab environment did not provide the permissions 
+required to create Amazon OpenSearch Serverless resources, and these IAM permissions could not 
+be modified. Instead of being blocked by the lab restriction, I changed the Knowledge Base to 
+use the **AWS-managed vector store**. This allowed me to continue implementing and testing the 
+RAG functionality successfully.
+
+For a production environment, I would add **Amazon Cognito** to authenticate customers and 
+control access to customer-specific information. For example, the authenticated customer 
+identity could be mapped to the AgentCore Memory actor ID so one customer could not access 
+another customer's order history or stored preferences. I would also use **Amazon Bedrock 
+Guardrails** to help control unsafe inputs and outputs. Additional production considerations 
+would include monitoring and alerting, fine-grained IAM permissions, cost controls, automated 
+evaluation, and human approval for sensitive operations such as refunds.

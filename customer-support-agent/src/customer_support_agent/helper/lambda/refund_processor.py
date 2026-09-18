@@ -1,138 +1,107 @@
 """
-Order Tracking Lambda
-======================
-Handles order and customer lookup.
-Invoked through the AgentCore Gateway (REST API proxy integration).
+Refund Processor Lambda
+========================
+Handles refund-related operations for the customer support agent.
+Invoked directly by the AgentCore Gateway (not through API Gateway).
 
-Routes exposed:
-  GET /orders/{order_id}              — return a single order by ID
-  GET /customers/{customer_id}/orders — return all orders for a customer
-  GET /customers/{customer_id}        — return customer profile
+How tool routing works:
+  AgentCore Gateway passes the tool name in the Lambda client context under
+  the key "bedrockAgentCoreToolName".  The value has the format:
+    "TargetName___toolName"
+  This handler strips the prefix and branches on the bare tool name.
 
-The data is hard-coded for demonstration purposes.  In a real system these
-handlers would query a database such as Amazon DynamoDB.
+Tools handled:
+  initiate_refund     — create and approve a new refund
+  check_refund_status — look up the status of an existing refund
+  get_return_label    — generate a prepaid return shipping label
 
-Deployment: zip this file and upload to an AWS Lambda function, then wire
-the function to the AgentCore Gateway as a target using API Gateway proxy
-integration.
+Tool schema is declared in lambda_schema (JSON file in the same directory).
+That schema tells the Gateway which arguments to pass for each tool.
 """
 import json
-from datetime import datetime, timedelta
+import random
+import string
+from datetime import datetime
 
 
-# ── Sample data ───────────────────────────────────────────────────────────────
-# Returned as a fresh dict on every call so state is never shared across
-# Lambda invocations (relevant when the execution environment is reused).
+# ── Helpers ───────────────────────────────────────────────────────────────────
 
-def _orders():
-    """Return the mock order database."""
-    return {
-        "ORD-001": {
-            "order_id":          "ORD-001",
-            "customer_id":       "CUST-123",
-            "status":            "SHIPPED",
-            "items":             [{"name": "Wireless Headphones Pro", "qty": 1, "price": 89.99}],
-            "total":             89.99,
-            "tracking_number":   "TRK987654321",
-            "carrier":           "UPS",
-            # Delivery expected in 2 days from the time the Lambda runs.
-            "estimated_delivery": (datetime.now() + timedelta(days=2)).strftime("%Y-%m-%d"),
-        },
-        "ORD-002": {
-            "order_id":     "ORD-002",
-            "customer_id":  "CUST-123",
-            "status":       "DELIVERED",
-            "items":        [{"name": "Kindle Paperwhite", "qty": 1, "price": 139.99}],
-            "total":        139.99,
-            "tracking_number": "TRK123456789",
-            "carrier":      "USPS",
-            # Delivered 3 days ago.
-            "delivered_date": (datetime.now() - timedelta(days=3)).strftime("%Y-%m-%d"),
-        },
-        "ORD-003": {
-            "order_id":     "ORD-003",
-            "customer_id":  "CUST-456",
-            "status":       "PROCESSING",
-            "items": [
-                {"name": "Echo Dot 5th Gen", "qty": 2, "price": 49.99},
-                {"name": "Smart Plug",        "qty": 1, "price": 24.99},
-            ],
-            "total":              124.97,
-            "estimated_delivery": (datetime.now() + timedelta(days=5)).strftime("%Y-%m-%d"),
-        },
-    }
-
-
-def _customers():
-    """Return the mock customer database."""
-    return {
-        "CUST-123": {"name": "Jane Smith",  "loyalty_points": 4250, "tier": "Gold"},
-        "CUST-456": {"name": "Bob Johnson", "loyalty_points": 890,  "tier": "Silver"},
-    }
-
-
-# ── Response helper ───────────────────────────────────────────────────────────
-def _response(status_code: int, body: dict) -> dict:
+def _new_refund_id() -> str:
     """
-    Format a Lambda proxy-integration response.
+    Generate a unique refund ID of the form REF-XXXXXXXX.
 
-    API Gateway requires a specific shape: statusCode, headers, and a
-    JSON-serialised body string.
+    Uses random ASCII uppercase letters and digits.  In a real system this
+    would be a database-generated ID (e.g. a UUID or auto-increment key).
     """
-    return {
-        "statusCode": status_code,
-        "headers":    {"Content-Type": "application/json"},
-        "body":       json.dumps(body),
-    }
+    return "REF-" + "".join(
+        random.choices(string.ascii_uppercase + string.digits, k=8)
+    )
 
 
 # ── Handler ───────────────────────────────────────────────────────────────────
+
 def lambda_handler(event, context):
     """
     Main Lambda entry point.
 
-    The API Gateway REST proxy integration populates these event fields:
-      resource       — the path template, e.g. /orders/{order_id}
-      httpMethod     — GET, POST, etc.
-      pathParameters — dict of path variable values, e.g. {"order_id": "ORD-001"}
+    Args:
+        event   — dict of tool arguments passed by the Gateway
+        context — Lambda context object; client_context carries the tool name
     """
-    print(f"Event: {json.dumps(event)}")
+    # ── Resolve tool name ─────────────────────────────────────────────────────
+    raw_tool = ""
+    if context.client_context and context.client_context.custom:
+        # The Gateway sets bedrockAgentCoreToolName to "TargetName___toolName".
+        raw_tool = context.client_context.custom.get("bedrockAgentCoreToolName", "")
 
-    # Extract routing fields from the proxy integration event.
-    resource = event.get("resource", "")        # e.g. "/orders/{order_id}"
-    method   = event.get("httpMethod", "GET")
-    params   = event.get("pathParameters") or {}
+    # Strip the target-name prefix to get just the bare tool name.
+    # If the separator is absent, use the raw value as-is.
+    tool = raw_tool.split("___", 1)[-1] if "___" in raw_tool else raw_tool
 
-    print(f"Request: {method} {resource} {params}")
+    print(f"Tool called: {tool} | Event: {json.dumps(event)}")
 
-    orders    = _orders()
-    customers = _customers()
+    # ── initiate_refund ───────────────────────────────────────────────────────
+    if tool == "initiate_refund":
+        return {
+            "statusCode": 200,
+            "body": json.dumps({
+                "refund_id":  _new_refund_id(),
+                "order_id":   event.get("order_id"),
+                "status":     "APPROVED",
+                "amount":     event.get("amount", 0),   # default to 0 if not supplied
+                "message":    "Refund approved. Credit appears in 3-5 business days.",
+                "created_at": datetime.utcnow().isoformat(),
+            }),
+        }
 
-    # ── GET /orders/{order_id} ────────────────────────────────────────────────
-    if resource == "/orders/{order_id}" and method == "GET":
-        # Normalise to uppercase so "ord-001" and "ORD-001" both work.
-        order_id = params.get("order_id", "").upper()
-        order    = orders.get(order_id)
-        if not order:
-            return _response(404, {"error": f"Order {order_id} not found"})
-        return _response(200, order)
+    # ── check_refund_status ───────────────────────────────────────────────────
+    if tool == "check_refund_status":
+        # In a real system, this would look up the refund in a database.
+        return {
+            "statusCode": 200,
+            "body": json.dumps({
+                "refund_id": event.get("refund_id"),
+                "status":    "PROCESSING",
+                "eta":       "2-3 business days",
+            }),
+        }
 
-    # ── GET /customers/{customer_id}/orders ───────────────────────────────────
-    if resource == "/customers/{customer_id}/orders" and method == "GET":
-        cid    = params.get("customer_id", "").upper()
-        # Filter orders to only those belonging to the requested customer.
-        result = [o for o in orders.values() if o["customer_id"] == cid]
-        if not result:
-            return _response(404, {"error": f"No orders found for {cid}"})
-        return _response(200, {"customer_id": cid, "orders": result})
+    # ── get_return_label ──────────────────────────────────────────────────────
+    if tool == "get_return_label":
+        order_id = event.get("order_id", "")
+        return {
+            "statusCode": 200,
+            "body": json.dumps({
+                "order_id":    order_id,
+                # Simulated pre-signed return label URL.
+                "label_url":   f"https://returns.amazon.com/label/{order_id}",
+                "carrier":     "UPS",
+                "valid_until": "2025-12-31",
+            }),
+        }
 
-    # ── GET /customers/{customer_id} ──────────────────────────────────────────
-    if resource == "/customers/{customer_id}" and method == "GET":
-        cid      = params.get("customer_id", "").upper()
-        customer = customers.get(cid)
-        if not customer:
-            return _response(404, {"error": f"Customer {cid} not found"})
-        return _response(200, customer)
-
-    # ── Unrecognised route ────────────────────────────────────────────────────
-    return _response(400, {"error": "Unrecognised route", "resource": resource})
+    # ── Unknown tool ──────────────────────────────────────────────────────────
+    return {
+        "statusCode": 400,
+        "body": json.dumps({"error": f"Unknown tool: {tool}"}),
+    }
