@@ -68,7 +68,7 @@ agentcore invoke '{"prompt": "Do you remember my name and communication preferen
 agentcore invoke '{"prompt": "I am a Gold member with 4250 points. Calculate my discount on a $150 standard order.", "customer_id": "CUST-123", "session_id": "t5"}'
 # Expected: points redeemed, tier discount 10%, final total, remaining points
 ```
-![Test 5](./src/customer_support_agent/images/test_5.png)
+![Test 5](./src/customer_support_agent/images/test_5_new.png)
 
 ### Test 6 — Browser Tool
 

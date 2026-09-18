@@ -632,7 +632,7 @@ async def invoke(payload, context=None):
 
             logger.info(
                 "Gateway tools loaded: %s",
-                [tool.name for tool in gateway_tools],
+                [str(tool) for tool in gateway_tools],
             )
 
         except TimeoutError:
