@@ -1,14 +1,15 @@
 from strands import Agent, tool
 from bedrock_agentcore.runtime import BedrockAgentCoreApp
 from src.customer_support_agent.config import MODEL, SYS_PROMPT, GATEWAY_URL,MEMORY_ID, REGION, KB_ID
-import logging, os, asyncio, argparse, json, uuid, boto3
+import logging, os, asyncio, argparse, json, uuid, boto3, ast
 from strands.tools.mcp.mcp_client import MCPClient
 from mcp.client.streamable_http import streamable_http_client
-from customer_support_agent.calculate_loyalty import calculate_loyalty_discount
 from bedrock_agentcore.memory import MemoryClient
 from src.customer_support_agent.memory  import MemoryHook
-# from src.customer_support_agent.KB import search_knowledge_base
 from strands_tools.browser import AgentCoreBrowser
+from bedrock_agentcore.tools.code_interpreter_client import code_session
+from pydantic import BaseModel, Field, ValidationError
+from typing import Literal
 
 
 
@@ -27,6 +28,7 @@ os.environ["BYPASS_TOOL_CONSENT"] = "true"
 memory_client = MemoryClient(region_name=REGION)
 
 
+# ── TODO 6 — Knowledge Base Tool ─────────────────────────────────────────────
 _bedrock_runtime = boto3.client("bedrock-agent-runtime", region_name=REGION)
 
 @tool
@@ -61,9 +63,233 @@ def search_knowledge_base(query: str) -> str:
     except Exception as e:
         logger.error(f"Error searching knowledge base: {e}")
         return "An error occurred while searching the knowledge base."
-        
-    
 
+    
+# ── TODO 7 — Loyalty Discount Tool (Code Interpreter) ────────────────────────
+##########################################################
+# Define Pydantic models for input and output validation
+class LoyaltyDiscountInput(BaseModel):
+    """Validated input for a loyalty discount calculation."""
+
+    loyalty_points: int = Field(ge=0, description="Customer's current loyalty points balance")
+    tier: Literal["Silver", "Gold", "Platinum"] = Field(description="Customer loyalty tier: Silver, Gold, or Platinum")
+    order_total: float = Field(gt=0, description="Total order amount in USD")
+    product_category: Literal["standard", "device", "fresh"] = Field(
+        default="standard",
+        description="Product category: standard, device, or fresh"
+    )
+
+
+class LoyaltyDiscountOutput(BaseModel):
+    loyalty_points: int
+    tier: str
+    product_category: str
+    order_total: float
+    tier_discount_pct: float
+    tier_discount: float
+    points_redeemed: int
+    points_discount: float
+    remaining_points: int
+    final_total: float
+    calculation_method: str = "code_interpreter"
+
+
+@tool
+def calculate_loyalty_discount(
+    loyalty_points: int,
+    tier: str,
+    order_total: float,
+    product_category: str = "standard",
+    ) -> str:
+
+    """
+    Calculate the loyalty discount for a customer order.
+
+    Uses Amazon Bedrock AgentCore Code Interpreter for the calculation
+    and validates the result with Pydantic.
+
+    Args:
+        loyalty_points: Customer's current points balance
+        tier: Customer tier — Silver, Gold, or Platinum
+        order_total: Order total in USD
+        product_category: standard, device, or fresh
+
+    Returns:
+        Full discount breakdown and final price.
+    """
+
+    # Validate input
+    try:
+        validated_input = LoyaltyDiscountInput(
+            loyalty_points=loyalty_points,
+            tier=tier,
+            order_total=order_total,
+            product_category=product_category,
+        )
+
+    except ValidationError as e:
+        return json.dumps({
+            "error": "Invalid loyalty discount input",
+            "details": e.errors(),
+        })
+
+    loyalty_points = validated_input.loyalty_points
+    tier = validated_input.tier
+    order_total = validated_input.order_total
+    product_category = validated_input.product_category
+
+    # Code executed inside AgentCore Code Interpreter
+    code = f"""
+        loyalty_points = {loyalty_points}
+        tier = "{tier}"
+        order_total = {order_total}
+        product_category = "{product_category}"
+
+        # Tier discount is independent of product category
+        tier_discounts = {{
+            "Silver": 0.05,
+            "Gold": 0.10,
+            "Platinum": 0.15,
+        }}
+
+        tier_discount_pct = tier_discounts[tier]
+
+        # Product category affects earning rate only
+        earn_rate = (
+            2 if product_category == "device"
+            else 5 if product_category == "fresh"
+            else 1
+        )
+
+        # Points can only be redeemed in multiples of 500
+        floored_points = (loyalty_points // 500) * 500
+
+        # 100 points = $1 discount
+        points_discount = floored_points / 100
+
+        # Points redemption is capped at 50% of the order total
+        points_discount = min(
+            points_discount,
+            order_total * 0.50,
+        )
+
+        # Determine actual points redeemed
+        points_redeemed = int(points_discount * 100)
+
+        # Tier discount is applied AFTER points redemption
+        subtotal_after_points = order_total - points_discount
+
+        tier_discount = subtotal_after_points * tier_discount_pct
+
+        final_total = subtotal_after_points - tier_discount
+
+        remaining_points = loyalty_points - points_redeemed
+
+        result = {{
+            "loyalty_points": loyalty_points,
+            "tier": tier,
+            "product_category": product_category,
+            "order_total": round(order_total, 2),
+            "tier_discount_pct": tier_discount_pct,
+            "tier_discount": round(tier_discount, 2),
+            "points_redeemed": points_redeemed,
+            "points_discount": round(points_discount, 2),
+            "remaining_points": remaining_points,
+            "final_total": round(final_total, 2),
+        }}
+
+        print(result)
+        """
+
+    try:
+        with code_session(REGION) as code_client:
+            response = code_client.invoke(
+                "executeCode",
+                {
+                    "code": code,
+                    "language": "python",
+                    "clearContext": True,
+                },
+            )
+
+        for event in response["stream"]:
+            if "result" in event:
+                result = event["result"]
+                text = result["content"][0]["text"]
+
+                parsed_result = ast.literal_eval(text)
+
+                validated_output = LoyaltyDiscountOutput(
+                    **parsed_result
+                )
+
+                return validated_output.model_dump_json()
+
+        raise RuntimeError("Code Interpreter returned no result")
+
+    except Exception as e:
+        logger.exception(
+            "Code Interpreter unavailable: %s",
+            e,
+        )
+
+        # Fallback calculation using the same business rules
+        tier_discounts = {
+            "Silver": 0.05,
+            "Gold": 0.10,
+            "Platinum": 0.15,
+        }
+
+        tier_discount_pct = tier_discounts[tier]
+
+        # Product category affects earning rate only
+        earn_rate = (
+            2 if product_category == "device"
+            else 5 if product_category == "fresh"
+            else 1
+        )
+
+        # Points are redeemed in multiples of 500
+        floored_points = (loyalty_points // 500) * 500
+
+        points_discount = floored_points / 100
+
+        # Maximum points redemption = 50% of order total
+        points_discount = min(
+            points_discount,
+            order_total * 0.50,
+        )
+
+        points_redeemed = int(points_discount * 100)
+
+        # Tier discount is applied after points redemption
+        subtotal_after_points = order_total - points_discount
+
+        tier_discount = (
+            subtotal_after_points * tier_discount_pct
+        )
+
+        final_total = (
+            subtotal_after_points - tier_discount
+        )
+
+        remaining_points = loyalty_points - points_redeemed
+
+        fallback_output = LoyaltyDiscountOutput(
+            loyalty_points=loyalty_points,
+            tier=tier,
+            product_category=product_category,
+            order_total=round(order_total, 2),
+            tier_discount_pct=tier_discount_pct,
+            tier_discount=round(tier_discount, 2),
+            points_redeemed=points_redeemed,
+            points_discount=round(points_discount, 2),
+            remaining_points=remaining_points,
+            final_total=round(final_total, 2),
+            calculation_method="fallback",
+        )
+
+        return fallback_output.model_dump_json()
 @app.entrypoint
 async def invoke(payload, context=None):
 
