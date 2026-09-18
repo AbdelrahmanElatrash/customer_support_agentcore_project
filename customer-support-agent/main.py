@@ -1,6 +1,5 @@
 from strands import Agent, tool
 from bedrock_agentcore.runtime import BedrockAgentCoreApp
-from src.customer_support_agent.config import MODEL, SYS_PROMPT, GATEWAY_URL,MEMORY_ID, REGION, KB_ID
 import logging, os, asyncio, argparse, json, uuid, boto3, ast
 from strands.tools.mcp.mcp_client import MCPClient
 from mcp.client.streamable_http import streamable_http_client
