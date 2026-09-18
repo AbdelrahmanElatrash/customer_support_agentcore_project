@@ -23,7 +23,7 @@ class LoyaltyDiscountOutput(BaseModel):
     tier: str
     product_category: str
     order_total: float
-    tier_discount_rate: float
+    tier_discount_pct: float
     tier_discount: float
     points_redeemed: int
     points_discount: float
@@ -89,8 +89,8 @@ def calculate_loyalty_discount(
             "Platinum": 0.15,
         }}
 
-        tier_discount_rate = tier_discounts.get(tier, 0.00)
-        tier_discount = order_total * tier_discount_rate
+        tier_discount_pct = tier_discounts.get(tier, 0.00)
+        tier_discount = order_total * tier_discount_pct
 
         redeemable_points = (loyalty_points // 100) * 100
 
@@ -113,7 +113,7 @@ def calculate_loyalty_discount(
             "tier": tier,
             "product_category": product_category,
             "order_total": round(order_total, 2),
-            "tier_discount_rate": tier_discount_rate,
+            "tier_discount_pct": tier_discount_pct,
             "tier_discount": round(tier_discount, 2),
             "points_redeemed": redeemable_points,
             "points_discount": round(points_discount, 2),
@@ -163,8 +163,8 @@ def calculate_loyalty_discount(
             "Platinum": 0.15,
         }
 
-        tier_discount_rate = tier_discounts[tier]
-        tier_discount = order_total * tier_discount_rate
+        tier_discount_pct = tier_discounts[tier]
+        tier_discount = order_total * tier_discount_pct
 
         redeemable_points = (loyalty_points // 100) * 100
 
@@ -187,7 +187,7 @@ def calculate_loyalty_discount(
             tier=tier,
             product_category=product_category,
             order_total=round(order_total, 2),
-            tier_discount_rate=tier_discount_rate,
+            tier_discount_pct=tier_discount_pct,
             tier_discount=round(tier_discount, 2),
             points_redeemed=redeemable_points,
             points_discount=round(points_discount, 2),
