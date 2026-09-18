@@ -27,49 +27,103 @@ memory_client = MemoryClient(region_name=REGION)
 
 @app.entrypoint
 async def invoke(payload, context=None):
-        """
-        Main handler called by AgentCore for every incoming request.
-    
-        Expected payload keys:
-          prompt      (str, required) — the customer's message
-          customer_id (str, optional) — unique customer identifier
-          session_id  (str, optional) — session identifier; generated if absent
-        """
-        # Implement the agent invocation
-        
-        user_message = payload.get("prompt", "Hello!")
-        actor_id = payload.get("customer_id", "customer-001")
-        session_id = payload.get("session_id") or str(uuid.uuid4())
 
-        browser = AgentCoreBrowser(session_timeout=600)
-        
-        memory_hook = MemoryHook(
-                    actor_id=actor_id,
-                    session_id=session_id,
-                    memory_client=memory_client,
-                    memory_id=MEMORY_ID,
-                        )
+    """ Main handler called by AgentCore for every incoming request. Expected payload 
+        keys: prompt (str, required) 
+            — the customer's message customer_id (str, optional) 
+            — unique customer identifier session_id (str, optional) 
+            — session identifier; generated if absent 
+    """ 
+    # Implement the agent invocation
+    user_message = payload.get("prompt", "Hello!")
+    actor_id = payload.get("customer_id", "customer-001")
+    session_id = payload.get("session_id") or str(uuid.uuid4())
 
-        
-        client = MCPClient(
+    browser = AgentCoreBrowser(
+        region=REGION,
+        session_timeout=600,
+    )
+
+    memory_hook = MemoryHook(
+        actor_id=actor_id,
+        session_id=session_id,
+        memory_client=memory_client,
+        memory_id=MEMORY_ID,
+    )
+
+    gateway_client = MCPClient(
         lambda: streamable_http_client(url=GATEWAY_URL)
+    )
+
+    with gateway_client:
+        try:
+            gateway_tools = gateway_client.list_tools_sync()
+
+            if not gateway_tools:
+                logger.warning(
+                    "Gateway connected but returned no tools."
+                )
+                return {
+                    "response": (
+                        "I'm sorry, but the order service is currently "
+                        "unavailable. Please try again later."
+                    )
+                }
+
+            logger.info(
+                "Gateway connected successfully. Loaded %d tools.",
+                len(gateway_tools),
+            )
+
+            logger.info(
+                "Gateway tools loaded: %s",
+                [tool.name for tool in gateway_tools],
+            )
+
+        except TimeoutError:
+            logger.exception("Gateway tool loading timed out")
+            return {
+                "response": (
+                    "I'm sorry, but the order service is temporarily "
+                    "unavailable. Please try again later."
+                )
+            }
+
+        except ConnectionError:
+            logger.exception("Gateway connection failed")
+            return {
+                "response": (
+                    "I'm sorry, but I couldn't connect to the order "
+                    "service. Please try again later."
+                )
+            }
+
+        except Exception as exc:
+            logger.exception(
+                "Gateway tool loading failed: %s",
+                exc,
+            )
+            return {
+                "response": (
+                    "I'm sorry, but the order service is currently "
+                    "unavailable. Please try again later."
+                )
+            }
+
+        agent = Agent(
+            model=MODEL,
+            system_prompt=SYS_PROMPT,
+            tools=[
+                calculate_loyalty_discount,
+                search_knowledge_base,
+                browser.browser,
+            ] + gateway_tools,
+            hooks=[memory_hook],
         )
 
-        
-        with client:
-            tools = client.list_tools_sync()
-            logger.info("Discovered %d tools from Gateway", len(tools))
+        response = agent(user_message)
 
-            
-            agent = Agent(model=MODEL,
-                    system_prompt=SYS_PROMPT,
-                    tools= [calculate_loyalty_discount, search_knowledge_base, browser.browser]+tools,
-                    hooks=[memory_hook]
-                    )
-
-            response = agent(user_message)
-            return {"response": str(response)}
-        
+        return {"response": str(response)}
 
         
 
