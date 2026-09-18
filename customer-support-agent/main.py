@@ -7,7 +7,7 @@ from mcp.client.streamable_http import streamable_http_client
 from customer_support_agent.calculate_loyalty import calculate_loyalty_discount
 from bedrock_agentcore.memory import MemoryClient
 from src.customer_support_agent.memory  import MemoryHook
-from src.customer_support_agent.KB import search_knowledge_base
+# from src.customer_support_agent.KB import search_knowledge_base
 from strands_tools.browser import AgentCoreBrowser
 
 
@@ -26,6 +26,43 @@ os.environ["BYPASS_TOOL_CONSENT"] = "true"
 
 memory_client = MemoryClient(region_name=REGION)
 
+
+_bedrock_runtime = boto3.client("bedrock-agent-runtime", region_name=REGION)
+
+@tool
+def search_knowledge_base(query: str) -> str:
+    """
+    Search the Amazon product catalog and support knowledge base.
+    Use this for product specifications, return policies, warranty
+    information, loyalty program details, and order status definitions.
+
+    Args:
+        query: The question or topic to search for
+
+    Returns:
+        Relevant information retrieved from the knowledge base
+    """
+
+    if not KB_ID:
+        return "Knowledge Base ID is not configured."
+    
+    # Implement the Knowledge Base search
+    try:
+        resp = _bedrock_runtime.retrieve(
+            knowledgeBaseId=KB_ID,
+            retrievalQuery={"text": query},
+        )
+        results = resp.get("retrievalResults", [])
+        if not results:
+            return f"No information found for: {query}"
+
+        chunks = [r["content"]["text"] for r in results]
+        return "\n---\n".join(chunks)
+    except Exception as e:
+        logger.error(f"Error searching knowledge base: {e}")
+        return "An error occurred while searching the knowledge base."
+        
+    
 
 @app.entrypoint
 async def invoke(payload, context=None):
