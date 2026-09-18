@@ -693,4 +693,4 @@ def main():
 
 if __name__== "__main__":
     # run the app locally for testing
-    app.run(port=8081)
+    app.run()
