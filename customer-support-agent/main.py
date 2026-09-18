@@ -1,7 +1,7 @@
-from strands import Agent
+from strands import Agent, tool
 from bedrock_agentcore.runtime import BedrockAgentCoreApp
-from src.customer_support_agent.config import MODEL, SYS_PROMPT, GATEWAY_URL,MEMORY_ID, REGION
-import logging, os, asyncio, argparse, json, uuid
+from src.customer_support_agent.config import MODEL, SYS_PROMPT, GATEWAY_URL,MEMORY_ID, REGION, KB_ID
+import logging, os, asyncio, argparse, json, uuid, boto3
 from strands.tools.mcp.mcp_client import MCPClient
 from mcp.client.streamable_http import streamable_http_client
 from customer_support_agent.calculate_loyalty import calculate_loyalty_discount
@@ -14,6 +14,8 @@ from strands_tools.browser import AgentCoreBrowser
 
 logging.basicConfig(level=logging.WARNING)
 logger = logging.getLogger("CSAI_Agent")
+
+
 
 # Create the BedrockAgentCoreApp instance
 app = BedrockAgentCoreApp()

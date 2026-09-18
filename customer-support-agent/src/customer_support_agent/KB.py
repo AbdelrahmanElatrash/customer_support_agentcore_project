@@ -21,6 +21,7 @@ def search_knowledge_base(query: str) -> str:
 
     if not KB_ID:
         return "Knowledge Base ID is not configured."
+    
     # Implement the Knowledge Base search
     resp = _bedrock_runtime.retrieve(
         knowledgeBaseId=KB_ID,
