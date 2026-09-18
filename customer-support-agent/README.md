@@ -105,6 +105,8 @@ be modified. Instead of being blocked by the lab restriction, I changed the Know
 use the **AWS-managed vector store**. This allowed me to continue implementing and testing the 
 RAG functionality successfully.
 
+We encountered IAM permission issues during deployment testing. The Knowledge Base initially failed because the Runtime execution role lacked bedrock:Retrieve, so we added permission scoped to the Knowledge Base ARN. The Browser initially failed with an authorization error because the Runtime role lacked the required AgentCore Browser session and automation permissions. After updating the IAM policy, both the RAG and Browser functionality worked successfully.
+
 For a production environment, I would add **Amazon Cognito** to authenticate customers and 
 control access to customer-specific information. For example, the authenticated customer 
 identity could be mapped to the AgentCore Memory actor ID so one customer could not access 
